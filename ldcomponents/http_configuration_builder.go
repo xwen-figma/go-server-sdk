@@ -1,6 +1,7 @@
 package ldcomponents
 
 import (
+	"crypto/x509"
 	"fmt"
 	"net/http"
 	"net/url"
@@ -83,6 +84,13 @@ func (b *HTTPConfigurationBuilder) CACert(certData []byte) *HTTPConfigurationBui
 func (b *HTTPConfigurationBuilder) CACertFile(filePath string) *HTTPConfigurationBuilder {
 	if b.checkValid() {
 		b.httpOptions = append(b.httpOptions, ldhttp.CACertFileOption(filePath))
+	}
+	return b
+}
+
+func (b *HTTPConfigurationBuilder) CustomTLSVerification(verifyFunc func(rawCerts [][]byte, verifiedChains [][]*x509.Certificate) error) *HTTPConfigurationBuilder {
+	if b.checkValid() {
+		b.httpOptions = append(b.httpOptions, ldhttp.CustomTLSVerificationOption(verifyFunc))
 	}
 	return b
 }
