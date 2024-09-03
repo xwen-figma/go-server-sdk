@@ -19,9 +19,10 @@ import (
 const defaultConnectTimeout = 10 * time.Second
 
 type transportExtraOptions struct {
-	caCerts        *x509.CertPool
-	connectTimeout time.Duration
-	proxyURL       *url.URL
+	caCerts                           *x509.CertPool
+	customPeerCertificateVerification func(rawCerts [][]byte, verifiedChains [][]*x509.Certificate) error
+	connectTimeout                    time.Duration
+	proxyURL                          *url.URL
 }
 
 // TransportOption is the interface for optional configuration parameters that can be passed to NewHTTPTransport.
@@ -101,6 +102,22 @@ func (o proxyOption) apply(opts *transportExtraOptions) error {
 	return nil
 }
 
+type customPeerCertificateVerification struct {
+	verifyFunc func(rawCerts [][]byte, verifiedChains [][]*x509.Certificate) error
+}
+
+func (o customPeerCertificateVerification) apply(opts *transportExtraOptions) error {
+	opts.customPeerCertificateVerification = o.verifyFunc
+	return nil
+}
+
+// CustomPeerCertificateVerification specifies a custom function to be used for verifying the server's certificate.
+func CustomPeerCertificateVerification(
+	verifyFunc func(rawCerts [][]byte, verifiedChains [][]*x509.Certificate) error,
+) TransportOption {
+	return customPeerCertificateVerification{verifyFunc: verifyFunc}
+}
+
 // NewHTTPTransport creates a customized http.Transport struct using the specified options. It returns both
 // the Transport and an associated net.Dialer.
 //
@@ -122,9 +139,18 @@ func NewHTTPTransport(options ...TransportOption) (*http.Transport, *net.Dialer,
 	}
 	transport := newDefaultTransport()
 	transport.DialContext = dialer.DialContext
-	if extraOptions.caCerts != nil {
-		transport.TLSClientConfig = &tls.Config{RootCAs: extraOptions.caCerts} //nolint:gosec // not setting TLS.MinVersion
+
+	tlsConfig := &tls.Config{} //nolint:gosec // not setting TLS.MinVersion
+
+	if extraOptions.customPeerCertificateVerification != nil {
+		tlsConfig.VerifyPeerCertificate = extraOptions.customPeerCertificateVerification
+		tlsConfig.InsecureSkipVerify = true
 	}
+
+	if extraOptions.caCerts != nil {
+		tlsConfig.RootCAs = extraOptions.caCerts
+	}
+	transport.TLSClientConfig = tlsConfig
 	if extraOptions.proxyURL != nil {
 		transport.Proxy = http.ProxyURL(extraOptions.proxyURL)
 	}
